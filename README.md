@@ -4,7 +4,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/cc1a2b/beamit/actions"><img src="https://img.shields.io/github/actions/workflow/status/cc1a2b/beamit/ci.yml?style=flat-square&label=tests" alt="Tests"></a>
   <a href="https://github.com/cc1a2b/beamit/releases"><img src="https://img.shields.io/github/v/release/cc1a2b/beamit?style=flat-square&color=7c3aed" alt="Release"></a>
   <a href="https://goreportcard.com/report/github.com/cc1a2b/beamit"><img src="https://goreportcard.com/badge/github.com/cc1a2b/beamit?style=flat-square" alt="Go Report"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/cc1a2b/beamit?style=flat-square" alt="License"></a>
@@ -20,6 +19,7 @@
 </p>
 
 ---
+<img width="1383" height="1467" alt="image" src="https://github.com/user-attachments/assets/859da738-20f8-4d21-b3f0-8e6a312c42dd" />
 
 BeamIt is an open-source, instant file sharing tool that lets anyone share files between ANY devices, ANYWHERE — same room or different countries — using only a web browser. One 6.5MB Go binary. Zero configuration. Just run it.
 
