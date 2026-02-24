@@ -1,0 +1,11 @@
+services:
+  beamit:
+    build: .
+    ports:
+      - "8080:8080"
+      - "3478:3478/udp"
+    environment:
+      - BEAMIT_HOST=0.0.0.0
+      - BEAMIT_PORT=8080
+      - BEAMIT_TURN_PORT=3478
+    restart: unless-stopped

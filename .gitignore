@@ -1,0 +1,29 @@
+# Binary
+beamit
+beamit-*
+*.exe
+
+# Go
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage.out
+coverage.html
+
+# Environment
+.env
+.env.local
+
+# Docker
+docker-compose.override.yml

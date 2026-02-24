@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="description" content="BeamIt — Share files between any devices. No app. No signup. No limits.">
+    <meta name="theme-color" content="#7c3aed" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <title>BeamIt — Instant File Sharing</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+    <link rel="manifest" href="/manifest.json">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-brand">
+                <span class="logo">⚡</span>
+                <span class="brand-name">BeamIt</span>
+            </div>
+            <div class="header-actions">
+                <button id="theme-toggle" class="btn-icon" aria-label="Toggle theme" title="Toggle theme">
+                    <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Connection status -->
+        <div id="connection-status" class="connection-status" aria-live="polite">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+        </div>
+
+        <!-- Peers section -->
+        <section class="section" id="peers-section">
+            <h2 class="section-title">Devices on your network</h2>
+            <div id="peers-grid" class="peers-grid">
+                <div class="empty-state" id="no-peers">
+                    <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 0 1 9-9"/></svg>
+                    <p>Waiting for nearby devices...</p>
+                    <p class="hint">Open BeamIt on another device on the same network</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Drop zone -->
+        <section class="section">
+            <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Select files to share">
+                <input type="file" id="file-input" multiple hidden>
+                <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <p class="drop-text">Drop files here or <span class="link">browse</span></p>
+                <p class="drop-hint">Any file type, any size</p>
+            </div>
+        </section>
+
+        <!-- Selected files -->
+        <section class="section" id="files-section" hidden>
+            <h2 class="section-title">Selected Files</h2>
+            <div id="files-list" class="files-list"></div>
+        </section>
+
+        <!-- Transfer progress -->
+        <section class="section" id="transfer-section" hidden>
+            <h2 class="section-title">Transfer</h2>
+            <div id="transfer-list" class="transfer-list"></div>
+        </section>
+
+        <!-- Cross-network sharing -->
+        <section class="section" id="sharing-section">
+            <h2 class="section-title">Share across networks</h2>
+            <div class="sharing-box">
+                <div id="room-create" class="room-action">
+                    <button id="create-room-btn" class="btn btn-primary">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        Get a sharing code
+                    </button>
+                </div>
+                <div id="room-code-display" class="room-code-display" hidden>
+                    <div class="code-badge">
+                        <span id="room-code" class="room-code"></span>
+                        <button id="copy-code-btn" class="btn-icon" title="Copy code">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                    </div>
+                    <p class="code-hint">Share this code with the other device</p>
+                    <div id="room-timer" class="room-timer"></div>
+                </div>
+
+                <div class="divider"><span>or enter a code</span></div>
+
+                <div class="room-join">
+                    <div class="input-group">
+                        <input type="text" id="join-code-input" class="input" placeholder="BEAM-XXXX" maxlength="9" autocomplete="off" spellcheck="false">
+                        <button id="join-room-btn" class="btn btn-primary">Join</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Text sharing -->
+        <section class="section" id="text-section" hidden>
+            <h2 class="section-title">Share text</h2>
+            <div class="text-share">
+                <textarea id="text-input" class="input textarea" placeholder="Type or paste text to send..." rows="3" maxlength="100000"></textarea>
+                <button id="send-text-btn" class="btn btn-secondary" disabled>Send Text</button>
+            </div>
+        </section>
+
+        <!-- Received text -->
+        <section class="section" id="received-text-section" hidden>
+            <h2 class="section-title">Received Text</h2>
+            <div id="received-text" class="received-text"></div>
+        </section>
+
+        <!-- Toast notifications -->
+        <div id="toast-container" class="toast-container" aria-live="assertive"></div>
+
+        <!-- Transfer request modal -->
+        <div id="transfer-modal" class="modal" hidden>
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <h3 class="modal-title">Incoming Files</h3>
+                <div id="transfer-modal-files" class="modal-files"></div>
+                <div class="modal-actions">
+                    <button id="accept-transfer-btn" class="btn btn-primary">Accept</button>
+                    <button id="reject-transfer-btn" class="btn btn-secondary">Decline</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
+</body>
+</html>
