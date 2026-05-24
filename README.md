@@ -1,68 +1,64 @@
-<p align="center">
-  <h1 align="center">⚡ BeamIt</h1>
-  <p align="center"><strong>Share files between any devices. No app. No signup. No limits.</strong></p>
-</p>
+# BeamIt
 
-<p align="center">
-  <a href="https://github.com/cc1a2b/beamit/releases"><img src="https://img.shields.io/github/v/release/cc1a2b/beamit?style=flat-square&color=7c3aed" alt="Release"></a>
-  <a href="https://goreportcard.com/report/github.com/cc1a2b/beamit"><img src="https://goreportcard.com/badge/github.com/cc1a2b/beamit?style=flat-square" alt="Go Report"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/cc1a2b/beamit?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/binary_size-6.5MB-brightgreen?style=flat-square" alt="Binary Size">
-</p>
+<div align="center">
 
-<p align="center">
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#how-it-works">How It Works</a> •
-  <a href="#features">Features</a> •
-  <a href="#why-beamit">Why BeamIt?</a> •
-  <a href="#self-hosting">Self-Hosting</a>
-</p>
+[![License](https://img.shields.io/github/license/cc1a2b/beamit?style=flat&color=blue)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![Release](https://img.shields.io/github/v/release/cc1a2b/beamit?style=flat&color=7c3aed)](https://github.com/cc1a2b/beamit/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cc1a2b/beamit?style=flat)](https://goreportcard.com/report/github.com/cc1a2b/beamit)
+[![Binary Size](https://img.shields.io/badge/binary_size-6.5MB-brightgreen?style=flat)](https://github.com/cc1a2b/beamit/releases)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/cc1a2b/beamit/releases)
+
+**⚡ Share Files Between Any Devices — No App, No Signup, No Limits**
+
+*One 6.5MB Go binary. Browser-based. WebRTC P2P with E2E encryption. Works across any networks, anywhere.*
+
+</div>
+
+## 📖 About
+
+**BeamIt** is an open-source, instant file sharing tool that lets anyone share files between ANY devices, ANYWHERE — same room or different countries — using only a web browser. One 6.5MB Go binary. Zero configuration. Just run it. Same-network devices auto-discover; cross-network pairs use a short shareable code. Transfers prefer WebRTC P2P, fall back through TURN, then WebSocket relay — every path stays end-to-end encrypted.
+
+<div align="center">
+<img alt="BeamIt Screenshot" src="https://github.com/user-attachments/assets/859da738-20f8-4d21-b3f0-8e6a312c42dd" width="100%">
+
+*BeamIt — drag a file, drop on a device, instant encrypted P2P transfer.*
+</div>
 
 ---
-<img width="1383" height="1467" alt="image" src="https://github.com/user-attachments/assets/859da738-20f8-4d21-b3f0-8e6a312c42dd" />
 
-BeamIt is an open-source, instant file sharing tool that lets anyone share files between ANY devices, ANYWHERE — same room or different countries — using only a web browser. One 6.5MB Go binary. Zero configuration. Just run it.
+## 📑 Table of Contents
 
-## Quick Start
+- [About](#-about)
+- [Features](#-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [How It Works](#-how-it-works)
+- [Usage Examples](#-usage-examples)
+- [Why BeamIt](#-why-beamit)
+- [Self-Hosting](#-self-hosting)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Support](#-support)
 
-### Build from Source
+---
 
-```bash
-git clone https://github.com/cc1a2b/beamit.git
-cd beamit
-make build
-./beamit
-```
+## ✨ Features
 
-### Docker
+### 🎯 Core Capabilities
+- **🌐 Browser-Based**: Works on every device with a modern browser — no app to install, no signup
+- **⚡ True P2P via WebRTC**: Direct device-to-device transfer when possible, fastest and most private
+- **🔒 E2E Encrypted**: AES-256-GCM end-to-end on every path, including TURN relay
+- **📡 Cross-Network**: Same room, same network, different countries — works anywhere
+- **🔍 Auto-Discovery on LAN**: Devices on the same network appear automatically
+- **💾 Single Binary / Self-Hostable**: 6.5MB Go binary, zero dependencies, no database
+- **🚀 No File Size Limits**: Share files of any size; only your bandwidth matters
+- **🌓 Dark/Light Theme**: System-aware, mobile responsive
+- **📋 Text/Clipboard Sharing**: Send snippets and links alongside files
+- **🔑 Room Codes**: Cross-network pairing via short codes (e.g. `BEAM-X7K2`)
 
-```bash
-docker run -p 8080:8080 -p 3478:3478/udp ghcr.io/cc1a2b/beamit
-```
-
-Then open **http://localhost:8080** in your browser.
-
-## How It Works
-
-### Same Network — automatic discovery
-
-```
-1. Person A opens BeamIt in their browser
-2. Person B opens BeamIt on another device (same network)
-3. Both devices appear automatically
-4. Drag file → drop on device → instant P2P transfer
-```
-
-### Different Networks — share a code
-
-```
-1. Person A clicks "Get a sharing code" → gets BEAM-X7K2
-2. Sends code to Person B (text, call, whatever)
-3. Person B enters code → devices paired
-4. WebRTC P2P transfer, E2E encrypted
-```
-
-### Connection strategy
+### 🧠 Intelligent Connection Engine
+> **Three-step strategy: P2P → TURN → relay. Always works. Always encrypted.**
 
 ```
 Step 1: WebRTC P2P direct (via STUN)
@@ -75,33 +71,109 @@ Step 3: WebSocket relay fallback
         └── ✅ Always works. Encrypted. Slower.
 ```
 
-## Features
+### 🌐 Sharing Modes
+<details>
+<summary><strong>Same network and cross-network — both flows are first-class</strong></summary>
 
-| Feature | BeamIt |
-|---------|--------|
-| Works in browser (no install) | ✅ |
-| Works across ANY networks | ✅ |
-| True P2P via WebRTC | ✅ |
-| E2E encrypted (AES-256-GCM) | ✅ |
-| Auto-discovery on LAN | ✅ |
-| Single binary / self-hostable | ✅ |
-| No file size limits | ✅ |
-| No accounts or signup | ✅ |
-| Dark/light theme | ✅ |
-| Mobile responsive | ✅ |
-| Text/clipboard sharing | ✅ |
-| Room codes for cross-network | ✅ |
-| Zero dependencies (no DB) | ✅ |
+**Same Network (auto-discovery):**
+1. Person A opens BeamIt in their browser
+2. Person B opens BeamIt on another device (same network)
+3. Both devices appear automatically
+4. Drag file → drop on device → instant P2P transfer
 
-## Why BeamIt?
+**Different Networks (share a code):**
+1. Person A clicks "Get a sharing code" → gets `BEAM-X7K2`
+2. Sends code to Person B (text, call, whatever)
+3. Person B enters code → devices paired
+4. WebRTC P2P transfer, E2E encrypted
 
-Every existing file sharing tool is broken in at least one critical way:
+</details>
+
+---
+
+## 📦 Installation
+
+### Pre-built Binary
+```bash
+# Download from releases page
+curl -L https://github.com/cc1a2b/beamit/releases/latest/download/beamit-linux-amd64 -o beamit
+chmod +x beamit
+./beamit
+```
+
+### Build from Source
+```bash
+git clone https://github.com/cc1a2b/beamit.git
+cd beamit
+make build
+./beamit
+```
+
+### Docker
+```bash
+docker run -p 8080:8080 -p 3478:3478/udp ghcr.io/cc1a2b/beamit
+```
+
+### System Requirements
+- **Linux, macOS, or Windows** (64-bit)
+- **Modern browser** (Chrome, Firefox, Safari, Edge — anything with WebRTC)
+- **6.5MB free disk** for the binary
+
+---
+
+## 🚀 Quick Start
+
+```bash
+./beamit
+```
+
+Open **http://localhost:8080** in your browser. Done.
+
+---
+
+## 🔄 How It Works
+
+### Same Network — automatic discovery
+Devices on the same LAN find each other via mDNS broadcast. Drag, drop, transfer.
+
+### Different Networks — share a code
+A short `BEAM-XXXX` code pairs two browsers across the internet. WebRTC handles NAT traversal; TURN handles strict NATs; WebSocket relay handles the rest.
+
+### Connection strategy
+P2P first (fastest). TURN second (still encrypted, slightly slower). WebSocket relay last (always works).
+
+---
+
+## 💡 Usage Examples
+
+```bash
+# Default — HTTP on :8080
+./beamit
+
+# Custom port
+./beamit --port 9090
+
+# Custom STUN/TURN servers
+./beamit --stun stun:custom.stun.com:3478 \
+         --turn turn:custom.turn.com:3478 \
+         --turn-user myuser --turn-pass mypass
+
+# Enable HTTPS with cert + key
+./beamit --tls-cert cert.pem --tls-key key.pem
+
+# Bind to a specific interface
+./beamit --host 192.168.1.10 --port 8080
+```
+
+---
+
+## 🏆 Why BeamIt
 
 | Tool | Browser-based | Cross-network | True P2P | Simple UX | Single binary | Self-host | No limits |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **BeamIt** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | LocalSend | ❌ (app) | ❌ (LAN only) | ✅ | ✅ | ❌ | ❌ | ✅ |
-| PairDrop | ✅ | ⚠️ (confusing) | ⚠️ (relay) | ❌ | ❌ (Node.js) | ✅ | ✅ |
+| PairDrop | ✅ | ⚠️ | ⚠️ (relay) | ❌ | ❌ (Node.js) | ✅ | ✅ |
 | ShareDrop | ✅ | ❌ (LAN only) | ✅ | ✅ | ❌ | ✅ | ✅ |
 | FilePizza | ✅ | ✅ | ✅ | ⚠️ | ❌ | ✅ | ⚠️ |
 | wormhole.app | ✅ | ✅ | ❌ (cloud) | ✅ | ❌ | ❌ | ❌ (10GB) |
@@ -109,240 +181,81 @@ Every existing file sharing tool is broken in at least one critical way:
 
 **BeamIt is the only tool that does all 7.**
 
-## Usage
+---
+
+## 🏠 Self-Hosting
 
 ```bash
-# Start with defaults (HTTP :8080)
-./beamit
+# Run on your own VPS
+./beamit --host 0.0.0.0 --port 80 \
+         --tls-cert /etc/letsencrypt/live/share.example.com/fullchain.pem \
+         --tls-key /etc/letsencrypt/live/share.example.com/privkey.pem
 
-# Custom port
-./beamit --port 9090
-
-# Development mode (verbose logging + CORS)
-./beamit --dev
-
-# Bind to specific host
-./beamit --host 0.0.0.0
-
-# With TURN server credentials
-./beamit --turn-port 3478 --turn-secret "your-secret"
-
-# Enable TLS
-./beamit --tls-cert cert.pem --tls-key key.pem
-
-# Show version
-./beamit --version
+# With a public TURN server for strict-NAT users
+./beamit --turn turn:turn.example.com:3478 \
+         --turn-user myuser --turn-pass mypass
 ```
 
-### All CLI flags
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--host` | `0.0.0.0` | Host to bind to |
-| `--port` | `8080` | HTTP port |
-| `--turn-port` | `3478` | TURN server port |
-| `--turn-secret` | | TURN authentication secret |
-| `--tls-cert` | | Path to TLS certificate |
-| `--tls-key` | | Path to TLS private key |
-| `--dev` | `false` | Enable dev mode |
-| `--log-level` | `info` | Log level (debug, info, warn, error) |
-| `--version` | | Show version and exit |
-
-## Architecture
-
-```
-    Device A (Browser)                              Device B (Browser)
-    ┌─────────────────┐                            ┌─────────────────┐
-    │  BeamIt Web UI  │                            │  BeamIt Web UI  │
-    │  ┌───────────┐  │       WebRTC P2P          │  ┌───────────┐  │
-    │  │  WebRTC   │──┼──────── Direct ───────────┼──│  WebRTC   │  │
-    │  │DataChannel│  │     (if P2P possible)      │  │DataChannel│  │
-    │  └───────────┘  │                            │  └───────────┘  │
-    │  ┌───────────┐  │                            │  ┌───────────┐  │
-    │  │AES-256-GCM│  │                            │  │AES-256-GCM│  │
-    │  └───────────┘  │                            │  └───────────┘  │
-    └────────┬────────┘                            └────────┬────────┘
-             │ WebSocket (signaling only)                    │
-             │                                              │
-    ┌────────┴──────────────────────────────────────────────┴────────┐
-    │                       BeamIt Server (Go)                       │
-    │                                                                │
-    │  ┌────────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-    │  │   Signaling    │  │  STUN/TURN   │  │   Static Files    │  │
-    │  │   (WebSocket)  │  │  Server      │  │   (Embedded)      │  │
-    │  │                │  │              │  │                   │  │
-    │  │ • Presence     │  │ • NAT        │  │ • index.html      │  │
-    │  │ • SDP exchange │  │   traversal  │  │ • app.js          │  │
-    │  │ • ICE relay    │  │ • TURN relay │  │ • style.css       │  │
-    │  │ • Room codes   │  │   fallback   │  │                   │  │
-    │  └────────────────┘  └──────────────┘  └───────────────────┘  │
-    │                                                                │
-    │  In-Memory State (no database)                                │
-    │  • Peers:  peer_id → {ws, ip, room}                          │
-    │  • Rooms:  code → {creator, joiner, expires}                 │
-    │  • Groups: public_ip → [peer_ids]  (LAN discovery)           │
-    └────────────────────────────────────────────────────────────────┘
-```
-
-### Project Structure
-
-```
-beamit/
-├── cmd/beamit/main.go           # Entry point, CLI flags
-├── internal/
-│   ├── server/
-│   │   ├── server.go            # HTTP + WebSocket server
-│   │   ├── handler.go           # WebSocket upgrade, health check
-│   │   └── middleware.go        # Rate limiting, CORS, security headers
-│   ├── signaling/
-│   │   ├── hub.go               # WebSocket hub — message routing
-│   │   ├── peer.go              # Peer state, read/write pumps
-│   │   ├── room.go              # Room codes (BEAM-XXXX)
-│   │   ├── discovery.go         # LAN auto-discovery
-│   │   └── messages.go          # WebSocket protocol types
-│   ├── turn/                    # TURN credential management
-│   └── relay/                   # WebSocket relay fallback
-├── web/                         # Frontend (embedded in binary)
-│   ├── index.html               # Single page
-│   ├── css/style.css            # Dark/light, responsive
-│   └── js/
-│       ├── app.js               # Main application
-│       ├── rtc.js               # WebRTC connections
-│       ├── transfer.js          # File chunking & download
-│       ├── crypto.js            # AES-256-GCM (Web Crypto API)
-│       ├── discovery.js         # Signaling client
-│       └── ui.js                # DOM, theming, toasts
-├── Makefile
-├── Dockerfile
-└── docker-compose.yml
-```
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Backend | Go 1.22+ (single binary) |
-| Frontend | Vanilla JS + CSS — no frameworks |
-| Signaling | WebSocket (gorilla/websocket) |
-| File Transfer | WebRTC DataChannel |
-| Encryption | AES-256-GCM via Web Crypto API |
-| NAT Traversal | STUN + built-in TURN relay |
-| Database | None — pure in-memory |
-| External deps | 1 (`gorilla/websocket`) |
-
-## Performance
-
-| Metric | Target | Actual |
-|--------|--------|--------|
-| Binary size | < 10MB | **6.5MB** |
-| Frontend (gzipped) | < 50KB | **~18KB** |
-| First paint | < 200ms | ✅ |
-| Time to interactive | < 500ms | ✅ |
-| External dependencies | Minimal | **1** |
-| Test count | Comprehensive | **30** (race-safe) |
-
-## Self-Hosting
-
-### Bare metal
-
-```bash
-# Download and run
-git clone https://github.com/cc1a2b/beamit.git
-cd beamit
-make build
-./beamit --host 0.0.0.0 --port 8080
-```
-
-### Docker Compose
-
-```yaml
-services:
-  beamit:
-    build: .
-    ports:
-      - "8080:8080"
-      - "3478:3478/udp"
-    restart: unless-stopped
-```
-
-```bash
-docker compose up -d
-```
-
-### Behind a reverse proxy (Nginx)
-
+Behind a reverse proxy:
 ```nginx
-server {
-    listen 443 ssl;
-    server_name beam.example.com;
-
-    ssl_certificate     /etc/ssl/certs/beam.pem;
-    ssl_certificate_key /etc/ssl/private/beam.key;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+location / {
+  proxy_pass http://127.0.0.1:8080;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
 }
 ```
 
-## Development
+---
 
+## 🤝 Contributing
+
+Contributions welcome from the open-source community.
+
+- **🐛 Report bugs** via [GitHub Issues](https://github.com/cc1a2b/beamit/issues)
+- **💡 Suggest features** that respect the no-signup, no-app philosophy
+- **📝 Improve documentation**
+- **🔧 Submit pull requests** for new transports, UI improvements, or self-host docs
+
+### Development Setup
 ```bash
-# Run in dev mode (verbose logging + CORS)
-make dev
-
-# Run tests (with race detection)
-make test
-
-# Build production binary
+git clone https://github.com/cc1a2b/beamit.git
+cd beamit
+go mod tidy
 make build
-
-# Build for all platforms
-make build-all
-
-# Build Docker image
-make docker
-
-# Test coverage
-make test-cover
 ```
-
-## Roadmap
-
-- [x] WebSocket signaling hub
-- [x] LAN auto-discovery
-- [x] Room codes (BEAM-XXXX)
-- [x] WebRTC P2P file transfer
-- [x] Drag-and-drop UI
-- [x] Dark/light theme
-- [x] Text/clipboard sharing
-- [x] Rate limiting & security headers
-- [ ] QR code for room codes
-- [ ] PWA / installable
-- [ ] Built-in TURN server (pion/turn)
-- [ ] Service Worker for large files
-- [ ] Share-via-link (URL-based sharing)
-- [ ] Transfer resume on disconnect
-- [ ] CI/CD with GitHub Actions
-- [ ] Pre-built release binaries
-
-## License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions are welcome! Feel free to open issues and pull requests.
 
 ---
 
-<p align="center">
-  <sub>Built with ⚡ by <a href="https://github.com/cc1a2b">cc1a2b</a></sub>
-</p>
+## 📄 License
+
+BeamIt is released under the **MIT License**. See [LICENSE](https://github.com/cc1a2b/beamit/blob/main/LICENSE) for details.
+
+```
+Copyright (c) 2024-2026 Hussain Alsharman
+Licensed under MIT License — free for commercial and personal use
+```
+
+---
+
+## ☕ Support
+
+If BeamIt makes file sharing easier:
+
+<div align="center">
+
+[![Buy Me A Coffee](https://cdn.buymeacoffee.com/buttons/default-orange.png)](https://www.buymeacoffee.com/cc1a2b)
+
+**⭐ Star this repo** • **🐦 Follow [@cc1a2b](https://twitter.com/cc1a2b)** • **📢 Share with everyone**
+
+</div>
+
+---
+
+<div align="center">
+
+**⚡ BeamIt — Share Files Between Any Devices**
+
+*Built with ❤️ by [cc1a2b](https://github.com/cc1a2b) for the open web*
+
+</div>
