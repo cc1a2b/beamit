@@ -722,5 +722,49 @@ body {
     }
 }
 
+/* Connection mode badge on peer cards */
+.connection-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 9999px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.connection-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.connection-badge--p2p {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+}
+.connection-badge--p2p::before { background: var(--success); }
+
+.connection-badge--turn {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--warning);
+}
+.connection-badge--turn::before { background: var(--warning); }
+
+.connection-badge--relay {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--error);
+}
+.connection-badge--relay::before { background: var(--error); }
+
 /* Hidden utility */
 [hidden] { display: none !important; }

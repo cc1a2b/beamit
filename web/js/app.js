@@ -1,14 +1,14 @@
 // BeamIt — Main Application
-// Ties together: signaling, WebRTC, file transfer, UI
+// Ties together: signaling, WebRTC, file transfer, encryption, UI
 
 import { SignalingClient } from './discovery.js';
-import { RTCPeer } from './rtc.js';
+import { RTCPeer, fetchTURNCredentials, _base64ToArray } from './rtc.js';
 import { FileReceiver } from './transfer.js';
 import {
     $, detectDeviceType, getDeviceName,
     initTheme, toggleTheme,
     showToast, setConnectionStatus,
-    createPeerCard, updatePeerProgress,
+    createPeerCard, updatePeerProgress, updatePeerConnectionMode,
     renderFiles, renderTransfer, showTransferModal,
 } from './ui.js';
 
@@ -112,6 +112,19 @@ const signaling = new SignalingClient({
         }
     },
 
+    // ── E2E Key Exchange ───────────────────────────────
+    on_key_exchange(data) {
+        const rtcPeer = getOrCreateRTCPeer(data.target);
+        rtcPeer.handleKeyExchange(data.public_key);
+    },
+
+    // ── WebSocket Relay Chunks ─────────────────────────
+    on_relay_chunk(data) {
+        // Decode base64 relay data and feed to file receiver
+        const raw = _base64ToArray(data.data);
+        fileReceiver.handleData(data.target, raw.buffer);
+    },
+
     // ── Transfer ───────────────────────────────────────
     on_transfer_request(data) {
         const peer = state.peers.get(data.target);
@@ -132,7 +145,7 @@ const signaling = new SignalingClient({
     },
 
     on_transfer_accept(data) {
-        // Target accepted — start WebRTC transfer
+        // Target accepted — start WebRTC transfer with encryption + fallback
         initiateTransfer(data.target);
     },
 
@@ -176,9 +189,9 @@ function getOrCreateRTCPeer(peerId) {
     if (rtcPeer) return rtcPeer;
 
     rtcPeer = new RTCPeer(peerId, signaling, {
-        onConnectionStateChange(id, connectionState) {
-            console.log(`RTC [${id}]: ${connectionState}`);
-            if (connectionState === 'connected') {
+        onConnectionStateChange(id, connState) {
+            console.log(`RTC [${id}]: ${connState}`);
+            if (connState === 'connected') {
                 showToast('P2P connected', 'success');
             }
         },
@@ -197,6 +210,15 @@ function getOrCreateRTCPeer(peerId) {
             showToast('P2P disconnected', 'info');
             cleanupRTCPeer(id);
         },
+        onWebRTCFailed(id) {
+            console.warn(`WebRTC connection failed [${id}]`);
+        },
+        onConnectionModeDetected(id, mode) {
+            console.log(`Connection mode [${id}]: ${mode}`);
+            updatePeerConnectionMode(id, mode);
+            const labels = { p2p: 'P2P Direct', turn: 'TURN Relay', relay: 'WebSocket Relay' };
+            showToast(`${labels[mode] || mode} connection`, 'info');
+        },
     });
 
     state.rtcPeers.set(peerId, rtcPeer);
@@ -212,35 +234,67 @@ function cleanupRTCPeer(peerId) {
 }
 
 // ── Transfer Logic ─────────────────────────────────────
+const WEBRTC_CONNECT_TIMEOUT = 15000; // 15s before falling back to relay
+
 async function initiateTransfer(peerId) {
     if (state.selectedFiles.length === 0) return;
 
-    let rtcPeer = state.rtcPeers.get(peerId);
-    if (!rtcPeer || !rtcPeer.dc || rtcPeer.dc.readyState !== 'open') {
-        // Need to establish WebRTC connection first
-        rtcPeer = getOrCreateRTCPeer(peerId);
-        await rtcPeer.createOffer();
+    let rtcPeer = getOrCreateRTCPeer(peerId);
+    let useRelay = false;
 
-        // Wait for data channel to open
-        await new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error('Connection timeout')), 30000);
-            const origHandler = rtcPeer.handlers.onDataChannelOpen;
-            rtcPeer.handlers.onDataChannelOpen = (id) => {
-                clearTimeout(timeout);
-                origHandler?.(id);
-                resolve();
-            };
-        });
+    // Try to establish WebRTC connection if not already open
+    if (!rtcPeer.dc || rtcPeer.dc.readyState !== 'open') {
+        try {
+            await rtcPeer.createOffer();
+
+            // Wait for data channel to open with timeout
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('WebRTC timeout')), WEBRTC_CONNECT_TIMEOUT);
+                const origOpen = rtcPeer.handlers.onDataChannelOpen;
+                rtcPeer.handlers.onDataChannelOpen = (id) => {
+                    clearTimeout(timeout);
+                    origOpen?.(id);
+                    resolve();
+                };
+                const origFailed = rtcPeer.handlers.onWebRTCFailed;
+                rtcPeer.handlers.onWebRTCFailed = (id) => {
+                    clearTimeout(timeout);
+                    origFailed?.(id);
+                    reject(new Error('WebRTC failed'));
+                };
+            });
+        } catch (err) {
+            console.warn('WebRTC connection failed, falling back to relay:', err.message);
+            showToast('WebRTC failed, using relay...', 'info');
+            useRelay = true;
+        }
+    }
+
+    // Perform E2E key exchange before transfer
+    try {
+        if (!rtcPeer.encryptionReady) {
+            await rtcPeer.initiateKeyExchange();
+        }
+        // Set shared key on receiver for decryption
+        fileReceiver.setSharedKey(rtcPeer.sharedKey);
+    } catch (err) {
+        console.warn('Key exchange failed, transferring without encryption:', err.message);
     }
 
     // Send files sequentially
     for (const file of state.selectedFiles) {
         const transferId = `send-${file.name}`;
         try {
-            await rtcPeer.sendFile(file, (progress) => {
+            const progressCb = (progress) => {
                 renderTransfer({ id: transferId, ...progress });
                 updatePeerProgress(peerId, progress.progress);
-            });
+            };
+
+            if (useRelay) {
+                await rtcPeer.sendFileViaRelay(file, progressCb);
+            } else {
+                await rtcPeer.sendFile(file, progressCb);
+            }
             showToast(`Sent: ${file.name}`, 'success');
         } catch (err) {
             console.error('Transfer failed:', err);
@@ -536,10 +590,14 @@ function initEvents() {
 }
 
 // ── Initialization ─────────────────────────────────────
-function init() {
+async function init() {
     initTheme();
     initEvents();
     setConnectionStatus('', 'Connecting...');
+
+    // Fetch TURN credentials before connecting (non-blocking on failure).
+    await fetchTURNCredentials();
+
     signaling.connect();
 
     // Periodic ping to keep connection alive

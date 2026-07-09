@@ -13,13 +13,14 @@ import (
 
 // Config holds the server configuration.
 type Config struct {
-	Host       string
-	Port       int
-	TURNPort   int
-	TURNSecret string
-	DevMode    bool
-	TLSCert    string
-	TLSKey     string
+	Host         string
+	Port         int
+	TURNPort     int
+	TURNSecret   string
+	TURNPublicIP string
+	DevMode      bool
+	TLSCert      string
+	TLSKey       string
 }
 
 // Server is the main BeamIt HTTP + WebSocket server.
@@ -62,6 +63,9 @@ func (s *Server) buildMux() http.Handler {
 
 	// Health check endpoint.
 	mux.HandleFunc("/health", s.handleHealth)
+
+	// TURN credentials endpoint.
+	mux.HandleFunc("/api/turn", s.handleTURN)
 
 	// Static file server for embedded web assets.
 	fileServer := http.FileServer(http.FS(s.webFS))

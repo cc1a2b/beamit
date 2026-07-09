@@ -220,6 +220,73 @@ func TestFindTarget_SameRoom(t *testing.T) {
 	}
 }
 
+func TestHubKeyExchangeForwarding(t *testing.T) {
+	hub := testHub(t)
+
+	peer1 := fakePeer(t, hub, "kx1", "Peer 1", "1.2.3.4")
+	peer2 := fakePeer(t, hub, "kx2", "Peer 2", "1.2.3.4")
+
+	hub.Register <- peer1
+	hub.Register <- peer2
+	time.Sleep(50 * time.Millisecond)
+
+	// Send a key_exchange message from peer1 to peer2.
+	sigData, _ := json.Marshal(SignalingMessage{
+		Target: "kx2",
+		SDP:    "fake-public-key-base64",
+	})
+	msg, _ := json.Marshal(Envelope{Type: MsgTypeKeyExchange, Data: sigData})
+	hub.ProcessMessage(peer1, msg)
+
+	// peer2 should receive the forwarded key_exchange.
+	select {
+	case raw := <-peer2.Send:
+		var env Envelope
+		if err := json.Unmarshal(raw, &env); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+		if env.Type != MsgTypeKeyExchange {
+			t.Errorf("expected key_exchange message, got %s", env.Type)
+		}
+	case <-time.After(time.Second):
+		t.Error("expected key_exchange message, got nothing")
+	}
+}
+
+func TestHubRelayChunkRecordsStats(t *testing.T) {
+	hub := testHub(t)
+
+	peer1 := fakePeer(t, hub, "r1", "Peer 1", "1.2.3.4")
+	peer2 := fakePeer(t, hub, "r2", "Peer 2", "1.2.3.4")
+
+	hub.Register <- peer1
+	hub.Register <- peer2
+	time.Sleep(50 * time.Millisecond)
+
+	// Send a relay_chunk from peer1 to peer2.
+	chunkData, _ := json.Marshal(RelayChunkMessage{
+		Target: "r2",
+		Data:   "dGVzdGRhdGE=", // "testdata" base64
+		Seq:    0,
+	})
+	msg, _ := json.Marshal(Envelope{Type: MsgTypeRelayChunk, Data: chunkData})
+	hub.ProcessMessage(peer1, msg)
+
+	// peer2 should receive the chunk.
+	select {
+	case raw := <-peer2.Send:
+		var env Envelope
+		if err := json.Unmarshal(raw, &env); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+		if env.Type != MsgTypeRelayChunk {
+			t.Errorf("expected relay_chunk message, got %s", env.Type)
+		}
+	case <-time.After(time.Second):
+		t.Error("expected relay_chunk message, got nothing")
+	}
+}
+
 func TestConcurrentPeerAccess(t *testing.T) {
 	hub := testHub(t)
 

@@ -6,7 +6,9 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/hassan/beamit/internal/relay"
 	"github.com/hassan/beamit/internal/signaling"
+	"github.com/hassan/beamit/internal/turn"
 )
 
 var upgrader = websocket.Upgrader{
@@ -46,14 +48,66 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	relayChunks, relayBytes := relay.GetStats()
 	stats := map[string]any{
-		"status":     "ok",
-		"peers":      s.hub.PeerCount(),
-		"rooms":      s.hub.Rooms.RoomCount(),
-		"lan_groups": s.hub.Discovery.GroupCount(),
+		"status":         "ok",
+		"peers":          s.hub.PeerCount(),
+		"rooms":          s.hub.Rooms.RoomCount(),
+		"lan_groups":     s.hub.Discovery.GroupCount(),
+		"relay_chunks":   relayChunks,
+		"relay_bytes":    relayBytes,
+		"turn_enabled":   s.config.TURNSecret != "",
 	}
 
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		slog.Error("failed to encode health response", "error", err)
+	}
+}
+
+// handleTURN returns TURN server credentials for WebRTC ICE configuration.
+func (s *Server) handleTURN(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Return empty ice_servers if TURN not configured (graceful degradation).
+	if s.config.TURNSecret == "" || s.config.TURNPublicIP == "" {
+		resp := map[string]any{
+			"ice_servers": []any{},
+			"ttl":         0,
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			slog.Error("failed to encode TURN response", "error", err)
+		}
+		return
+	}
+
+	// Generate unique client ID from request IP.
+	clientID := extractIP(r)
+	cfg := turn.Config{
+		Port:     s.config.TURNPort,
+		PublicIP: s.config.TURNPublicIP,
+		Secret:   s.config.TURNSecret,
+	}
+
+	creds, err := turn.GenerateCredentials(cfg, clientID)
+	if err != nil {
+		slog.Error("failed to generate TURN credentials", "error", err)
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Return in WebRTC-compatible ICE server format.
+	iceServer := map[string]any{
+		"urls":       creds.URIs,
+		"username":   creds.Username,
+		"credential": creds.Password,
+	}
+
+	resp := map[string]any{
+		"ice_servers": []any{iceServer},
+		"ttl":         creds.TTL,
+	}
+
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		slog.Error("failed to encode TURN response", "error", err)
 	}
 }

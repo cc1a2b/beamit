@@ -16,6 +16,7 @@ const (
 	MsgTypeTransferAck   = "transfer_accept"
 	MsgTypeTransferNack  = "transfer_reject"
 	MsgTypeRelayChunk    = "relay_chunk"
+	MsgTypeKeyExchange   = "key_exchange"
 	MsgTypeText          = "text"
 	MsgTypePing          = "ping"
 

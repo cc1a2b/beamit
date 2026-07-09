@@ -1,6 +1,6 @@
 # Binary
-beamit
-beamit-*
+/beamit
+/beamit-*
 *.exe
 
 # Go

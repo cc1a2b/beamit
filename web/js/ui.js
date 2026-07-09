@@ -263,13 +263,32 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+// Update the connection mode badge on a peer card
+function updatePeerConnectionMode(peerId, mode) {
+    const card = $(`.peer-card[data-peer-id="${peerId}"]`);
+    if (!card) return;
+
+    // Remove existing badge
+    const existing = card.querySelector('.connection-badge');
+    if (existing) existing.remove();
+
+    const labels = { p2p: 'P2P', turn: 'TURN', relay: 'Relay' };
+    const label = labels[mode];
+    if (!label) return;
+
+    const badge = document.createElement('span');
+    badge.className = `connection-badge connection-badge--${mode}`;
+    badge.textContent = label;
+    card.appendChild(badge);
+}
+
 export {
     $, $$,
     detectDeviceType, deviceEmoji, getDeviceName,
     formatSize, formatSpeed, fileIcon,
     initTheme, toggleTheme,
     showToast, setConnectionStatus,
-    createPeerCard, updatePeerProgress,
+    createPeerCard, updatePeerProgress, updatePeerConnectionMode,
     renderFiles, renderTransfer, showTransferModal,
     escapeHtml,
 };

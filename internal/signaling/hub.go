@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+
+	"github.com/hassan/beamit/internal/relay"
 )
 
 // Hub maintains the set of active peers and routes messages between them.
@@ -126,6 +128,8 @@ func (h *Hub) ProcessMessage(sender *Peer, raw []byte) {
 		h.handleTransferResponse(sender, MsgTypeTransferNack, env.Data)
 	case MsgTypeRelayChunk:
 		h.handleRelayChunk(sender, env.Data)
+	case MsgTypeKeyExchange:
+		h.handleSignaling(sender, MsgTypeKeyExchange, env.Data)
 	case MsgTypeText:
 		h.handleText(sender, env.Data)
 	case MsgTypePing:
@@ -292,6 +296,9 @@ func (h *Hub) handleRelayChunk(sender *Peer, data json.RawMessage) {
 		sender.SendError("peer_not_found", "Target peer not found")
 		return
 	}
+
+	// Record relay metrics.
+	relay.RecordChunk(len(msg.Data))
 
 	// Forward chunk with sender's ID.
 	outMsg := RelayChunkMessage{
