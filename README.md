@@ -254,6 +254,6 @@ If BeamIt makes file sharing easier:
 
 **BeamIt — Share Files Between Any Devices**
 
-*Built with by [cc1a2b](https://github.com/cc1a2b) for the open web*
+*Built by [cc1a2b](https://github.com/cc1a2b) for the open web*
 
 </div>
