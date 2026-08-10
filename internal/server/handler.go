@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 
@@ -44,19 +45,33 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go peer.ReadPump()
 }
 
+// handleServiceWorker serves the PWA service worker with root scope and no-cache
+// headers so a browser can control the whole origin and always pick up new versions.
+func (s *Server) handleServiceWorker(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(s.webFS, "sw.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Service-Worker-Allowed", "/")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(data)
+}
+
 // handleHealth returns server health and stats.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	relayChunks, relayBytes := relay.GetStats()
 	stats := map[string]any{
-		"status":         "ok",
-		"peers":          s.hub.PeerCount(),
-		"rooms":          s.hub.Rooms.RoomCount(),
-		"lan_groups":     s.hub.Discovery.GroupCount(),
-		"relay_chunks":   relayChunks,
-		"relay_bytes":    relayBytes,
-		"turn_enabled":   s.config.TURNSecret != "",
+		"status":       "ok",
+		"peers":        s.hub.PeerCount(),
+		"rooms":        s.hub.Rooms.RoomCount(),
+		"lan_groups":   s.hub.Discovery.GroupCount(),
+		"relay_chunks": relayChunks,
+		"relay_bytes":  relayBytes,
+		"turn_enabled": s.config.TURNSecret != "",
 	}
 
 	if err := json.NewEncoder(w).Encode(stats); err != nil {

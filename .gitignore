@@ -1,7 +1,8 @@
-# Binary
+# Binary (root build artifacts only — must not match the cmd/beamit/ source dir)
 /beamit
 /beamit-*
 *.exe
+/dist/
 
 # Go
 vendor/

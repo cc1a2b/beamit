@@ -1,5 +1,7 @@
 // BeamIt UI module — DOM manipulation, theming, toasts
 
+import { QrCode, Ecc, renderToCanvas } from './qrcode.js';
+
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
@@ -194,35 +196,98 @@ function renderFiles(files, onRemove) {
     });
 }
 
-// Render transfer progress
+// ── QR rendering ───────────────────────────────────────
+function renderQR(canvas, text, opts = {}) {
+    const dark = getComputedStyle(document.documentElement).getPropertyValue('--qr-dark').trim() || '#0f0f23';
+    const qr = QrCode.encodeText(text, Ecc.MEDIUM);
+    renderToCanvas(qr, canvas, opts.size || 220, opts.border ?? 4, dark, '#ffffff');
+    return qr;
+}
+
+// ── Transfer list ──────────────────────────────────────
+const _transferItems = new Map(); // transfer.id -> element
+let _cancelHandler = null;
+let _listDelegated = false;
+
+function setTransferCancelHandler(fn) {
+    _cancelHandler = fn;
+}
+
+function formatEta(seconds) {
+    if (!seconds || !isFinite(seconds) || seconds <= 0) return '';
+    const s = Math.round(seconds);
+    if (s < 60) return `${s}s left`;
+    const m = Math.floor(s / 60);
+    return `${m}m ${(s % 60).toString().padStart(2, '0')}s left`;
+}
+
 function renderTransfer(transfer) {
     const section = $('#transfer-section');
     section.hidden = false;
     const list = $('#transfer-list');
 
-    let item = list.querySelector(`[data-transfer-id="${transfer.id}"]`);
+    // One delegated handler drives every cancel button.
+    if (!_listDelegated) {
+        list.addEventListener('click', (e) => {
+            const btn = e.target.closest('.transfer-cancel');
+            if (!btn) return;
+            const pid = btn.closest('.transfer-item')?.dataset.peerId;
+            if (pid && _cancelHandler) _cancelHandler(pid);
+        });
+        _listDelegated = true;
+    }
+
+    let item = _transferItems.get(transfer.id);
     if (!item) {
         item = document.createElement('div');
         item.className = 'transfer-item';
-        item.dataset.transferId = transfer.id;
+        _transferItems.set(transfer.id, item);
         list.appendChild(item);
     }
+    if (transfer.peerId) item.dataset.peerId = transfer.peerId;
 
-    const pct = Math.round(transfer.progress * 100);
-    const barClass = pct >= 100 ? 'transfer-bar-fill complete' : 'transfer-bar-fill';
-    const statusText = pct >= 100 ? 'Complete' : `${formatSize(transfer.sent)} / ${formatSize(transfer.total)}`;
+    const pct = Math.round((transfer.progress || 0) * 100);
+    const done = pct >= 100;
+    const dirArrow = transfer.direction === 'receive' ? '↓' : '↑';
 
+    let barClass = 'transfer-bar-fill';
+    if (transfer.cancelled) barClass += ' cancelled';
+    else if (done) barClass += ' complete';
+
+    let statusText;
+    if (transfer.cancelled) statusText = 'Cancelled';
+    else if (done) statusText = 'Complete';
+    else statusText = `${formatSize(transfer.sent || 0)} / ${formatSize(transfer.total || 0)}`;
+
+    let badge = '';
+    if (transfer.verified === true) badge = '<span class="verify-badge verify-ok" title="SHA-256 verified">Verified</span>';
+    else if (transfer.verified === false) badge = '<span class="verify-badge verify-fail" title="Integrity check failed">Corrupt</span>';
+
+    const meta = transfer.speed > 0 ? formatSpeed(transfer.speed) : (done ? '' : formatEta(transfer.eta));
+    const showCancel = transfer.direction === 'send' && !done && !transfer.cancelled;
+
+    item.classList.toggle('is-done', done || !!transfer.cancelled);
     item.innerHTML = `
         <div class="transfer-header">
-            <span class="transfer-name">${escapeHtml(transfer.name)}</span>
-            <span class="transfer-speed">${transfer.speed > 0 ? formatSpeed(transfer.speed) : ''}</span>
+            <span class="transfer-name"><span class="transfer-dir">${dirArrow}</span> ${escapeHtml(transfer.name)} ${badge}</span>
+            <span class="transfer-speed">${escapeHtml(meta)}</span>
         </div>
         <div class="transfer-bar"><div class="${barClass}" style="width:${pct}%"></div></div>
         <div class="transfer-status">
             <span>${statusText}</span>
-            <span>${pct}%</span>
+            <span class="transfer-right">${pct}%${showCancel ? ' <button class="transfer-cancel" title="Cancel" aria-label="Cancel transfer">✕</button>' : ''}</span>
         </div>
     `;
+}
+
+function clearFinishedTransfers() {
+    for (const [id, el] of _transferItems) {
+        if (el.classList.contains('is-done')) {
+            el.remove();
+            _transferItems.delete(id);
+        }
+    }
+    if (_transferItems.size === 0) $('#transfer-section').hidden = true;
 }
 
 // Show transfer request modal
@@ -290,5 +355,6 @@ export {
     showToast, setConnectionStatus,
     createPeerCard, updatePeerProgress, updatePeerConnectionMode,
     renderFiles, renderTransfer, showTransferModal,
+    renderQR, setTransferCancelHandler, clearFinishedTransfers,
     escapeHtml,
 };

@@ -20,6 +20,9 @@
                 <span class="brand-name">BeamIt</span>
             </div>
             <div class="header-actions">
+                <button id="install-btn" class="btn-icon" aria-label="Install app" title="Install BeamIt" hidden>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </button>
                 <button id="theme-toggle" class="btn-icon" aria-label="Toggle theme" title="Toggle theme">
                     <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
                     <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -63,7 +66,10 @@
 
         <!-- Transfer progress -->
         <section class="section" id="transfer-section" hidden>
-            <h2 class="section-title">Transfer</h2>
+            <div class="section-head">
+                <h2 class="section-title">Transfer</h2>
+                <button id="clear-transfers-btn" class="btn-text" type="button">Clear finished</button>
+            </div>
             <div id="transfer-list" class="transfer-list"></div>
         </section>
 
@@ -84,7 +90,14 @@
                             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
                     </div>
-                    <p class="code-hint">Share this code with the other device</p>
+                    <p class="code-hint">Scan the QR code, or share the code or link</p>
+                    <canvas id="room-qr" class="room-qr" width="220" height="220" hidden></canvas>
+                    <div class="share-link-row">
+                        <span id="share-link" class="share-link" aria-label="Share link"></span>
+                        <button id="copy-link-btn" class="btn-icon" title="Copy link">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        </button>
+                    </div>
                     <div id="room-timer" class="room-timer"></div>
                 </div>
 

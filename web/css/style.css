@@ -28,6 +28,8 @@
     --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
     --shadow-lg: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
     --transition: 0.2s ease;
+    /* QR modules are always dark-on-white for reliable scanning, independent of theme. */
+    --qr-dark: #14142b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -768,3 +770,118 @@ body {
 
 /* Hidden utility */
 [hidden] { display: none !important; }
+
+/* ── v0.1.1: QR / share link / install / transfer UX ──────────────── */
+
+.room-qr {
+    display: block;
+    margin: 14px auto 6px;
+    width: 220px;
+    height: 220px;
+    max-width: 70vw;
+    background: #ffffff;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+    image-rendering: pixelated; /* keep QR modules crisp when scaled */
+}
+
+.share-link-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+    max-width: 100%;
+    margin: 6px auto 2px;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.share-link {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 240px;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.btn-text {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: var(--radius-sm);
+}
+.btn-text:hover { background: var(--accent-light); }
+
+#install-btn:not([hidden]) {
+    display: inline-flex;
+}
+
+.transfer-dir {
+    display: inline-block;
+    font-weight: 700;
+    color: var(--accent);
+    margin-right: 2px;
+}
+
+.transfer-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.transfer-cancel {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+    transition: all var(--transition);
+}
+.transfer-cancel:hover {
+    border-color: var(--error);
+    color: var(--error);
+}
+
+.transfer-bar-fill.cancelled {
+    background: var(--text-muted) !important;
+}
+
+.verify-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 999px;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+.verify-ok {
+    color: var(--success);
+    background: rgba(16, 185, 129, 0.12);
+}
+.verify-fail {
+    color: var(--error);
+    background: rgba(239, 68, 68, 0.12);
+}
+
+.transfer-item.is-done { opacity: 0.85; }

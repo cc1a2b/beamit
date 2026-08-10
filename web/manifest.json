@@ -1,16 +1,38 @@
 {
-    "name": "BeamIt",
+    "id": "/",
+    "name": "BeamIt — Instant File Sharing",
     "short_name": "BeamIt",
     "description": "Share files between any devices. No app. No signup. No limits.",
-    "start_url": "/",
+    "start_url": "/?source=pwa",
+    "scope": "/",
     "display": "standalone",
+    "display_override": ["standalone", "minimal-ui"],
+    "orientation": "any",
     "background_color": "#0f0f23",
     "theme_color": "#7c3aed",
+    "categories": ["utilities", "productivity"],
+    "lang": "en",
+    "dir": "ltr",
     "icons": [
         {
             "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>",
             "sizes": "any",
-            "type": "image/svg+xml"
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%237c3aed'/><text x='50' y='52' font-size='60' text-anchor='middle' dominant-baseline='central'>⚡</text></svg>",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Get a sharing code",
+            "short_name": "New code",
+            "description": "Create a cross-network sharing code",
+            "url": "/?action=create-room"
         }
     ]
 }

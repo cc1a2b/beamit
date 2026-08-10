@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/fstest"
 
 	"github.com/hassan/beamit/internal/signaling"
 )
@@ -94,6 +95,45 @@ func TestHandleTURN_WithConfig(t *testing.T) {
 	ttl, ok := resp["ttl"].(float64)
 	if !ok || ttl <= 0 {
 		t.Errorf("expected positive TTL, got %v", resp["ttl"])
+	}
+}
+
+func TestHandleServiceWorker(t *testing.T) {
+	s := testServer(t, Config{})
+	s.webFS = fstest.MapFS{
+		"sw.js": &fstest.MapFile{Data: []byte("// beamit sw\n")},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
+	rec := httptest.NewRecorder()
+
+	s.handleServiceWorker(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Service-Worker-Allowed"); got != "/" {
+		t.Errorf("expected Service-Worker-Allowed=/, got %q", got)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/javascript; charset=utf-8" {
+		t.Errorf("unexpected content-type %q", ct)
+	}
+	if rec.Body.Len() == 0 {
+		t.Error("expected service worker body")
+	}
+}
+
+func TestHandleServiceWorker_Missing(t *testing.T) {
+	s := testServer(t, Config{})
+	s.webFS = fstest.MapFS{} // no sw.js
+
+	req := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
+	rec := httptest.NewRecorder()
+
+	s.handleServiceWorker(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 when sw.js missing, got %d", rec.Code)
 	}
 }
 

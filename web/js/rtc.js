@@ -2,8 +2,10 @@
 
 import {
     generateECDHKeyPair, exportPublicKey, importPublicKey,
-    deriveSharedKey, encryptPacked, decryptPacked,
+    deriveSharedKey, encryptPacked,
 } from './crypto.js';
+import { frameControl, frameChunk } from './wire.js';
+import { Sha256 } from './sha256.js';
 
 let rtcConfig = {
     iceServers: [
@@ -60,6 +62,14 @@ export class RTCPeer {
 
         // Connection mode tracking
         this.connectionMode = 'connecting'; // 'connecting' | 'p2p' | 'turn' | 'relay'
+
+        // Set true to abort an in-flight outgoing transfer.
+        this.cancelled = false;
+    }
+
+    /** Request cancellation of an in-flight outgoing transfer. */
+    cancelSend() {
+        this.cancelled = true;
     }
 
     async createOffer() {
@@ -169,6 +179,8 @@ export class RTCPeer {
         this.sharedKey = await deriveSharedKey(this.ecdhKeyPair.privateKey, peerPubKey);
         this.encryptionReady = true;
         console.log(`E2E encryption established [${this.peerId}]`);
+        // Notify the app so BOTH the sender and receiver register this peer's key for decryption.
+        this.handlers.onEncryptionReady?.(this.peerId, this.sharedKey);
     }
 
     _waitForEncryption(timeoutMs) {
@@ -186,33 +198,34 @@ export class RTCPeer {
 
     // ── Encrypted File Transfer ──────────────────────────
 
+    /**
+     * Wrap a frame for the wire: encrypt with the session key when ready, else send as-is.
+     * Returns a Uint8Array suitable for DataChannel.send() or (base64) relay.
+     */
+    async _pack(frameBytes) {
+        return this.encryptionReady ? await encryptPacked(this.sharedKey, frameBytes) : frameBytes;
+    }
+
     async sendFile(file, onProgress) {
         if (!this.dc || this.dc.readyState !== 'open') {
             throw new Error('Data channel not open');
         }
+        this.cancelled = false;
 
-        // Send file metadata first (encrypted if key available)
-        const meta = JSON.stringify({
+        this.dc.send(await this._pack(frameControl({
             type: 'file_meta',
             name: file.name,
             size: file.size,
             mime: file.type,
-        });
+        })));
 
-        if (this.encryptionReady) {
-            const encMeta = await encryptPacked(this.sharedKey, new TextEncoder().encode(meta));
-            this.dc.send(encMeta);
-        } else {
-            this.dc.send(meta);
-        }
-
-        // Read and send file in chunks
         const reader = file.stream().getReader();
+        const hasher = new Sha256();
         let sent = 0;
         const startTime = Date.now();
 
         while (true) {
-            // Back-pressure: wait if buffer is getting full
+            // Back-pressure: wait if the send buffer is getting full.
             if (this.dc.bufferedAmount > CHUNK_SIZE * 16) {
                 await new Promise(resolve => {
                     this.dc.onbufferedamountlow = resolve;
@@ -220,53 +233,31 @@ export class RTCPeer {
                 });
             }
 
+            if (this.cancelled) {
+                try { this.dc.send(await this._pack(frameControl({ type: 'transfer_cancel' }))); } catch { /* ignore */ }
+                await reader.cancel();
+                throw new Error('cancelled');
+            }
+
             const { done, value } = await reader.read();
             if (done) break;
 
-            // Send chunk — may need to split if larger than CHUNK_SIZE
             let offset = 0;
             while (offset < value.length) {
                 const end = Math.min(offset + CHUNK_SIZE, value.length);
-                const chunk = value.slice(offset, end);
-
-                if (this.encryptionReady) {
-                    const encChunk = await encryptPacked(this.sharedKey, chunk);
-                    this.dc.send(encChunk);
-                } else {
-                    this.dc.send(chunk);
-                }
+                const chunk = value.subarray(offset, end);
+                hasher.update(chunk);
+                this.dc.send(await this._pack(frameChunk(chunk)));
 
                 sent += chunk.length;
                 offset = end;
-
-                const elapsed = (Date.now() - startTime) / 1000;
-                const speed = elapsed > 0 ? sent / elapsed : 0;
-                onProgress?.({
-                    sent,
-                    total: file.size,
-                    progress: sent / file.size,
-                    speed,
-                    name: file.name,
-                });
+                onProgress?.(_progress(file.name, sent, file.size, startTime, 'send'));
             }
         }
 
-        // Send end marker
-        const endMarker = JSON.stringify({ type: 'file_end' });
-        if (this.encryptionReady) {
-            const encEnd = await encryptPacked(this.sharedKey, new TextEncoder().encode(endMarker));
-            this.dc.send(encEnd);
-        } else {
-            this.dc.send(endMarker);
-        }
+        this.dc.send(await this._pack(frameControl({ type: 'file_end', hash: hasher.hexDigest() })));
 
-        onProgress?.({
-            sent: file.size,
-            total: file.size,
-            progress: 1,
-            speed: 0,
-            name: file.name,
-        });
+        onProgress?.({ sent: file.size, total: file.size, progress: 1, speed: 0, eta: 0, name: file.name, direction: 'send' });
     }
 
     // ── WebSocket Relay Fallback ─────────────────────────
@@ -274,100 +265,59 @@ export class RTCPeer {
     async sendFileViaRelay(file, onProgress) {
         this.connectionMode = 'relay';
         this.handlers.onConnectionModeDetected?.(this.peerId, 'relay');
+        this.cancelled = false;
 
         const reader = file.stream().getReader();
+        const hasher = new Sha256();
         let sent = 0;
         let seq = 0;
         const startTime = Date.now();
 
-        // Send metadata
-        const meta = JSON.stringify({
+        const relaySend = async (frameBytes, final = false) => {
+            this.signaling.send('relay_chunk', {
+                target: this.peerId,
+                data: _arrayToBase64(await this._pack(frameBytes)),
+                seq: seq++,
+                final,
+            });
+        };
+
+        await relaySend(frameControl({
             type: 'file_meta',
             name: file.name,
             size: file.size,
             mime: file.type,
-        });
+        }));
 
-        let metaData;
-        if (this.encryptionReady) {
-            const encMeta = await encryptPacked(this.sharedKey, new TextEncoder().encode(meta));
-            metaData = _arrayToBase64(encMeta);
-        } else {
-            metaData = _arrayToBase64(new TextEncoder().encode(meta));
-        }
-
-        this.signaling.send('relay_chunk', {
-            target: this.peerId,
-            data: metaData,
-            seq: seq++,
-        });
-
-        // Send file chunks via relay with throttling
         while (true) {
+            if (this.cancelled) {
+                await relaySend(frameControl({ type: 'transfer_cancel' }), true);
+                await reader.cancel();
+                throw new Error('cancelled');
+            }
+
             const { done, value } = await reader.read();
             if (done) break;
 
             let offset = 0;
             while (offset < value.length) {
                 const end = Math.min(offset + RELAY_CHUNK_SIZE, value.length);
-                const chunk = value.slice(offset, end);
-
-                let chunkData;
-                if (this.encryptionReady) {
-                    const encChunk = await encryptPacked(this.sharedKey, chunk);
-                    chunkData = _arrayToBase64(encChunk);
-                } else {
-                    chunkData = _arrayToBase64(chunk);
-                }
-
-                this.signaling.send('relay_chunk', {
-                    target: this.peerId,
-                    data: chunkData,
-                    seq: seq++,
-                });
+                const chunk = value.subarray(offset, end);
+                hasher.update(chunk);
+                await relaySend(frameChunk(chunk));
 
                 sent += chunk.length;
                 offset = end;
+                onProgress?.(_progress(file.name, sent, file.size, startTime, 'send'));
 
-                const elapsed = (Date.now() - startTime) / 1000;
-                const speed = elapsed > 0 ? sent / elapsed : 0;
-                onProgress?.({
-                    sent,
-                    total: file.size,
-                    progress: sent / file.size,
-                    speed,
-                    name: file.name,
-                });
-
-                // Throttle: ~10ms delay between chunks to avoid flooding WebSocket
-                await new Promise(r => setTimeout(r, 10));
+                // Throttle a little to avoid flooding the WebSocket relay.
+                await new Promise(r => setTimeout(r, 8));
             }
         }
 
-        // Send end marker
-        const endMarker = JSON.stringify({ type: 'file_end' });
-        let endData;
-        if (this.encryptionReady) {
-            const encEnd = await encryptPacked(this.sharedKey, new TextEncoder().encode(endMarker));
-            endData = _arrayToBase64(encEnd);
-        } else {
-            endData = _arrayToBase64(new TextEncoder().encode(endMarker));
-        }
+        await relaySend(frameControl({ type: 'file_end', hash: hasher.hexDigest() }), true);
 
-        this.signaling.send('relay_chunk', {
-            target: this.peerId,
-            data: endData,
-            seq: seq++,
-            final: true,
-        });
-
-        onProgress?.({
-            sent: file.size,
-            total: file.size,
-            progress: 1,
-            speed: 0,
-            name: file.name,
-        });
+        onProgress?.({ sent: file.size, total: file.size, progress: 1, speed: 0, eta: 0, name: file.name, direction: 'send' });
     }
 
     // ── Connection Mode Detection ────────────────────────
@@ -403,6 +353,7 @@ export class RTCPeer {
     // ── Lifecycle ────────────────────────────────────────
 
     close() {
+        this.cancelled = true;
         if (this.dc) {
             this.dc.close();
             this.dc = null;
@@ -485,6 +436,22 @@ export class RTCPeer {
             console.error(`Data channel error [${this.peerId}]:`, event);
         };
     }
+}
+
+// ── Progress helper ──────────────────────────────────────
+
+function _progress(name, sent, total, startTime, direction) {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const speed = elapsed > 0 ? sent / elapsed : 0;
+    return {
+        name,
+        sent,
+        total,
+        progress: total > 0 ? sent / total : 0,
+        speed,
+        eta: speed > 0 && total > 0 ? Math.max((total - sent) / speed, 0) : 0,
+        direction,
+    };
 }
 
 // ── Base64 Helpers ───────────────────────────────────────

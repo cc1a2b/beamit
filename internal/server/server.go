@@ -67,6 +67,9 @@ func (s *Server) buildMux() http.Handler {
 	// TURN credentials endpoint.
 	mux.HandleFunc("/api/turn", s.handleTURN)
 
+	// Service worker — served with root scope + no-cache headers.
+	mux.HandleFunc("/sw.js", s.handleServiceWorker)
+
 	// Static file server for embedded web assets.
 	fileServer := http.FileServer(http.FS(s.webFS))
 	mux.Handle("/", fileServer)

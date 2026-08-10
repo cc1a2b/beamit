@@ -3,21 +3,21 @@
 <div align="center">
 
 [![License](https://img.shields.io/github/license/cc1a2b/beamit?style=flat&color=blue)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![Release](https://img.shields.io/github/v/release/cc1a2b/beamit?style=flat&color=7c3aed)](https://github.com/cc1a2b/beamit/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cc1a2b/beamit?style=flat)](https://goreportcard.com/report/github.com/cc1a2b/beamit)
-[![Binary Size](https://img.shields.io/badge/binary_size-6.5MB-brightgreen?style=flat)](https://github.com/cc1a2b/beamit/releases)
+[![Binary Size](https://img.shields.io/badge/binary_size-6.9MB-brightgreen?style=flat)](https://github.com/cc1a2b/beamit/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/cc1a2b/beamit/releases)
 
 **Share Files Between Any Devices — No App, No Signup, No Limits**
 
-*One 6.5MB Go binary. Browser-based. WebRTC P2P with E2E encryption. Works across any networks, anywhere.*
+*One 6.9MB Go binary. Browser-based. WebRTC P2P with E2E encryption. Works across any networks, anywhere.*
 
 </div>
 
 ## About
 
-**BeamIt** is an open-source, instant file sharing tool that lets anyone share files between ANY devices, ANYWHERE — same room or different countries — using only a web browser. One 6.5MB Go binary. Zero configuration. Just run it. Same-network devices auto-discover; cross-network pairs use a short shareable code. Transfers prefer WebRTC P2P, fall back through TURN, then WebSocket relay — every path stays end-to-end encrypted.
+**BeamIt** is an open-source, instant file sharing tool that lets anyone share files between ANY devices, ANYWHERE — same room or different countries — using only a web browser. One 6.9MB Go binary. Zero configuration. Just run it. Same-network devices auto-discover; cross-network pairs use a short shareable code, a link, or a QR code. Transfers prefer WebRTC P2P, fall back through a built-in TURN relay, then a WebSocket relay — every path stays end-to-end encrypted and is verified with a streaming SHA-256.
 
 <div align="center">
 <img alt="BeamIt Screenshot" src="https://github.com/user-attachments/assets/859da738-20f8-4d21-b3f0-8e6a312c42dd" width="100%">
@@ -45,17 +45,25 @@
 
 ## Features
 
+### New in v1.1.0
+- **QR codes and auto-join links**: Every sharing code renders a QR and a `https://host/#BEAM-XXXX` link. Scan the QR with a phone camera or open the link and the room joins itself — no manual code entry.
+- **Unlimited-size transfers**: The receiver streams incoming chunks straight to disk with the File System Access API instead of buffering the whole file in memory, so multi-gigabyte transfers no longer exhaust the browser tab. Browsers without the API fall back to the classic in-memory download.
+- **End-to-end integrity**: The sender hashes each file with a streaming SHA-256 and sends the digest in the final frame; the receiver hashes as chunks arrive and flags any mismatch. AES-256-GCM already authenticates every chunk; this catches truncation or reordering across the relay path too.
+- **Installable PWA**: A service worker precaches the app shell so BeamIt opens instantly and works offline, with an in-app Install button.
+- **Built-in TURN server**: `--turn-secret` starts a real TURN relay (pion/turn) with time-limited HMAC credentials, served to the browser via `/api/turn`, so strict-NAT peers stay end-to-end encrypted instead of dropping to the slower WebSocket relay.
+- **Per-transfer UX**: Live speed and ETA, a cancel button, connection-mode badges (P2P / TURN / Relay), a screen wake lock so mobile transfers don't stall, and per-peer receive sessions so several peers can send at once.
+
 ### Core Capabilities
 - **Browser-Based**: Works on every device with a modern browser — no app to install, no signup
 - **True P2P via WebRTC**: Direct device-to-device transfer when possible, fastest and most private
-- **E2E Encrypted**: AES-256-GCM end-to-end on every path, including TURN relay
+- **E2E Encrypted**: AES-256-GCM with per-peer ECDH key exchange on every path, including the TURN and WebSocket relays
 - **Cross-Network**: Same room, same network, different countries — works anywhere
 - **Auto-Discovery on LAN**: Devices on the same network appear automatically
-- **Single Binary / Self-Hostable**: 6.5MB Go binary, zero dependencies, no database
-- **No File Size Limits**: Share files of any size; only your bandwidth matters
+- **Single Binary / Self-Hostable**: 6.9MB Go binary, two dependencies (`gorilla/websocket`, `pion/turn`), no database
+- **No File Size Limits**: Streams straight to disk on the receiver — only your bandwidth matters
 - **Dark/Light Theme**: System-aware, mobile responsive
 - **Text/Clipboard Sharing**: Send snippets and links alongside files
-- **Room Codes**: Cross-network pairing via short codes (e.g. `BEAM-X7K2`)
+- **Room Codes, Links & QR**: Cross-network pairing via short codes (e.g. `BEAM-X7K2`), auto-join links, or a scannable QR
 
 ### Intelligent Connection Engine
 > **Three-step strategy: P2P → TURN → relay. Always works. Always encrypted.**
@@ -81,11 +89,11 @@ Step 3: WebSocket relay fallback
 3. Both devices appear automatically
 4. Drag file → drop on device → instant P2P transfer
 
-**Different Networks (share a code):**
-1. Person A clicks "Get a sharing code" → gets `BEAM-X7K2`
-2. Sends code to Person B (text, call, whatever)
-3. Person B enters code → devices paired
-4. WebRTC P2P transfer, E2E encrypted
+**Different Networks (share a code, link, or QR):**
+1. Person A clicks "Get a sharing code" → gets `BEAM-X7K2`, a link, and a QR
+2. A shares any of the three — the code, the `https://host/#BEAM-X7K2` link, or the QR
+3. Person B enters the code, opens the link, or scans the QR → the link/QR auto-joins, no typing
+4. WebRTC P2P transfer, E2E encrypted, SHA-256 verified
 
 </details>
 
@@ -117,7 +125,7 @@ docker run -p 8080:8080 -p 3478:3478/udp ghcr.io/cc1a2b/beamit
 ### System Requirements
 - **Linux, macOS, or Windows** (64-bit)
 - **Modern browser** (Chrome, Firefox, Safari, Edge — anything with WebRTC)
-- **6.5MB free disk** for the binary
+- **6.9MB free disk** for the binary
 
 ---
 
@@ -136,8 +144,8 @@ Open **http://localhost:8080** in your browser. Done.
 ### Same Network — automatic discovery
 Devices on the same LAN find each other via mDNS broadcast. Drag, drop, transfer.
 
-### Different Networks — share a code
-A short `BEAM-XXXX` code pairs two browsers across the internet. WebRTC handles NAT traversal; TURN handles strict NATs; WebSocket relay handles the rest.
+### Different Networks — share a code, link, or QR
+A short `BEAM-XXXX` code pairs two browsers across the internet. The same code is also rendered as a `https://host/#BEAM-XXXX` link and a QR — opening the link or scanning the QR auto-joins the room. WebRTC handles NAT traversal; the built-in TURN relay handles strict NATs; the WebSocket relay handles the rest.
 
 ### Connection strategy
 P2P first (fastest). TURN second (still encrypted, slightly slower). WebSocket relay last (always works).
@@ -153,13 +161,14 @@ P2P first (fastest). TURN second (still encrypted, slightly slower). WebSocket r
 # Custom port
 ./beamit --port 9090
 
-# Custom STUN/TURN servers
-./beamit --stun stun:custom.stun.com:3478 \
-         --turn turn:custom.turn.com:3478 \
-         --turn-user myuser --turn-pass mypass
+# Start the built-in TURN relay (advertise your public IP)
+./beamit --turn-secret "a-long-random-secret" --turn-ip 203.0.113.10 --turn-port 3478
 
 # Enable HTTPS with cert + key
 ./beamit --tls-cert cert.pem --tls-key key.pem
+
+# Development mode (CORS + verbose logging)
+./beamit --dev --log-level debug
 
 # Bind to a specific interface
 ./beamit --host 192.168.1.10 --port 8080
@@ -171,7 +180,7 @@ P2P first (fastest). TURN second (still encrypted, slightly slower). WebSocket r
 
 | Tool | Browser-based | Cross-network | True P2P | Simple UX | Single binary | Self-host | No limits |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **BeamIt** | | | | | | | |
+| **BeamIt** | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | LocalSend | (app) | (LAN only) | | | | | |
 | PairDrop | | | (relay) | | (Node.js) | | |
 | ShareDrop | | (LAN only) | | | | | |
@@ -191,10 +200,12 @@ P2P first (fastest). TURN second (still encrypted, slightly slower). WebSocket r
          --tls-cert /etc/letsencrypt/live/share.example.com/fullchain.pem \
          --tls-key /etc/letsencrypt/live/share.example.com/privkey.pem
 
-# With a public TURN server for strict-NAT users
-./beamit --turn turn:turn.example.com:3478 \
-         --turn-user myuser --turn-pass mypass
+# With the built-in TURN relay for strict-NAT users
+./beamit --host 0.0.0.0 --port 8080 \
+         --turn-secret "a-long-random-secret" --turn-ip 203.0.113.10
 ```
+
+Open UDP `3478` (or your `--turn-port`) so the built-in TURN relay is reachable.
 
 Behind a reverse proxy:
 ```nginx

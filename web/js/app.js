@@ -1,5 +1,5 @@
 // BeamIt — Main Application
-// Ties together: signaling, WebRTC, file transfer, encryption, UI
+// Ties together: signaling, WebRTC, file transfer, encryption, QR/deep-link, PWA, UI.
 
 import { SignalingClient } from './discovery.js';
 import { RTCPeer, fetchTURNCredentials, _base64ToArray } from './rtc.js';
@@ -10,6 +10,7 @@ import {
     showToast, setConnectionStatus,
     createPeerCard, updatePeerProgress, updatePeerConnectionMode,
     renderFiles, renderTransfer, showTransferModal,
+    renderQR, setTransferCancelHandler, clearFinishedTransfers,
 } from './ui.js';
 
 // ── State ──────────────────────────────────────────────
@@ -22,6 +23,11 @@ const state = {
     roomTimer: null,         // room expiry interval
     deviceName: getDeviceName(),
     deviceType: detectDeviceType(),
+    pendingJoinCode: null,   // room code from a share link, joined once connected
+    pendingAction: null,     // e.g. 'create-room' from a PWA shortcut
+    installPrompt: null,     // stashed beforeinstallprompt event
+    wakeLock: null,          // Screen Wake Lock sentinel
+    wakeRefs: 0,             // active transfers keeping the screen awake
 };
 
 // ── Signaling Client ───────────────────────────────────
@@ -29,11 +35,21 @@ const signaling = new SignalingClient({
     onOpen() {
         setConnectionStatus('connected', 'Connected');
 
-        // Join with device info
         signaling.send('join', {
             name: state.deviceName,
             device_type: state.deviceType,
         });
+
+        // Act on any pending deep-link intent now that we are connected.
+        if (state.pendingJoinCode) {
+            signaling.send('join_room', { code: state.pendingJoinCode });
+            showToast(`Joining ${state.pendingJoinCode}…`, 'info');
+            state.pendingJoinCode = null;
+        }
+        if (state.pendingAction === 'create-room') {
+            signaling.send('create_room', {});
+            state.pendingAction = null;
+        }
     },
 
     onClose() {
@@ -48,11 +64,8 @@ const signaling = new SignalingClient({
 
     // ── Peer Discovery ─────────────────────────────────
     on_peers(data) {
-        // Initial peer list (LAN peers)
         if (data.peers) {
-            for (const peer of data.peers) {
-                state.peers.set(peer.id, peer);
-            }
+            for (const peer of data.peers) state.peers.set(peer.id, peer);
             renderPeers();
         }
     },
@@ -76,12 +89,9 @@ const signaling = new SignalingClient({
     },
 
     on_room_joined(data) {
-        // A peer joined our room (or we joined theirs)
         state.peers.set(data.peer.id, data.peer);
         renderPeers();
         showToast(`${data.peer.name} connected via code`, 'success');
-
-        // Show text sharing section now that we have a peer
         updateTextSection();
     },
 
@@ -100,16 +110,12 @@ const signaling = new SignalingClient({
 
     on_answer(data) {
         const rtcPeer = state.rtcPeers.get(data.target);
-        if (rtcPeer) {
-            rtcPeer.handleAnswer(data.sdp);
-        }
+        if (rtcPeer) rtcPeer.handleAnswer(data.sdp);
     },
 
     on_ice(data) {
         const rtcPeer = state.rtcPeers.get(data.target);
-        if (rtcPeer) {
-            rtcPeer.handleICECandidate(data.candidate);
-        }
+        if (rtcPeer) rtcPeer.handleICECandidate(data.candidate);
     },
 
     // ── E2E Key Exchange ───────────────────────────────
@@ -120,44 +126,44 @@ const signaling = new SignalingClient({
 
     // ── WebSocket Relay Chunks ─────────────────────────
     on_relay_chunk(data) {
-        // Decode base64 relay data and feed to file receiver
         const raw = _base64ToArray(data.data);
-        fileReceiver.handleData(data.target, raw.buffer);
+        fileReceiver.handleData(data.target, raw);
     },
 
     // ── Transfer ───────────────────────────────────────
     on_transfer_request(data) {
-        const peer = state.peers.get(data.target);
-        const peerName = peer?.name || 'Unknown';
-
         showTransferModal(
             data.files,
-            () => {
-                // Accept
+            async () => {
+                // Prepare the receive target (may open a save/directory picker) BEFORE
+                // accepting, so the sender only starts once we're ready to write.
+                wakeAcquire();
+                try {
+                    await fileReceiver.prepare(data.target, data.files);
+                } catch (err) {
+                    console.warn('prepare failed:', err);
+                }
                 signaling.send('transfer_accept', { target: data.target });
                 showToast('Transfer accepted', 'success');
             },
             () => {
-                // Reject
                 signaling.send('transfer_reject', { target: data.target });
-            }
+            },
         );
     },
 
     on_transfer_accept(data) {
-        // Target accepted — start WebRTC transfer with encryption + fallback
         initiateTransfer(data.target);
     },
 
-    on_transfer_reject(data) {
+    on_transfer_reject() {
         showToast('Transfer declined', 'info');
     },
 
     // ── Text ───────────────────────────────────────────
     on_text(data) {
         const peer = state.peers.get(data.target);
-        const peerName = peer?.name || 'Unknown';
-        showReceivedText(data.text, peerName);
+        showReceivedText(data.text, peer?.name || 'Unknown');
     },
 
     // ── Error ──────────────────────────────────────────
@@ -166,21 +172,24 @@ const signaling = new SignalingClient({
         showToast(data.message, 'error');
     },
 
-    on_pong() {
-        // Keep-alive response
-    },
+    on_pong() { /* keep-alive */ },
 });
 
 // ── File Receiver ──────────────────────────────────────
 const fileReceiver = new FileReceiver(
-    // onProgress
-    (transfer) => {
-        renderTransfer(transfer);
+    (transfer) => renderTransfer(transfer),
+    (name, size, info = {}) => {
+        wakeRelease();
+        if (info.cancelled) {
+            showToast(`Transfer of ${name} cancelled`, 'info');
+        } else if (info.verified === false) {
+            showToast(`Integrity check FAILED for ${name}`, 'error', 6000);
+        } else if (info.verified === true) {
+            showToast(`Received & verified: ${name}`, 'success');
+        } else {
+            showToast(`Received: ${name}`, 'success');
+        }
     },
-    // onComplete
-    (name, size) => {
-        showToast(`Received: ${name}`, 'success');
-    }
 );
 
 // ── RTC Peer Management ────────────────────────────────
@@ -190,31 +199,27 @@ function getOrCreateRTCPeer(peerId) {
 
     rtcPeer = new RTCPeer(peerId, signaling, {
         onConnectionStateChange(id, connState) {
-            console.log(`RTC [${id}]: ${connState}`);
-            if (connState === 'connected') {
-                showToast('P2P connected', 'success');
-            }
+            if (connState === 'connected') showToast('P2P connected', 'success');
         },
-        onDataChannelOpen(id) {
-            console.log(`Data channel ready [${id}]`);
-            // Show text section since we have a direct connection
+        onDataChannelOpen() {
             updateTextSection();
         },
-        onDataChannelClose(id) {
-            console.log(`Data channel closed [${id}]`);
-        },
+        onDataChannelClose() { /* no-op */ },
         onData(id, data) {
             fileReceiver.handleData(id, data);
         },
+        onEncryptionReady(id, key) {
+            // Register the derived key so THIS side can decrypt what the peer sends.
+            fileReceiver.setPeerKey(id, key);
+        },
         onDisconnected(id) {
-            showToast('P2P disconnected', 'info');
+            fileReceiver.cleanup(id);
             cleanupRTCPeer(id);
         },
         onWebRTCFailed(id) {
             console.warn(`WebRTC connection failed [${id}]`);
         },
         onConnectionModeDetected(id, mode) {
-            console.log(`Connection mode [${id}]: ${mode}`);
             updatePeerConnectionMode(id, mode);
             const labels = { p2p: 'P2P Direct', turn: 'TURN Relay', relay: 'WebSocket Relay' };
             showToast(`${labels[mode] || mode} connection`, 'info');
@@ -231,6 +236,7 @@ function cleanupRTCPeer(peerId) {
         rtcPeer.close();
         state.rtcPeers.delete(peerId);
     }
+    fileReceiver.cleanup(peerId);
 }
 
 // ── Transfer Logic ─────────────────────────────────────
@@ -239,15 +245,12 @@ const WEBRTC_CONNECT_TIMEOUT = 15000; // 15s before falling back to relay
 async function initiateTransfer(peerId) {
     if (state.selectedFiles.length === 0) return;
 
-    let rtcPeer = getOrCreateRTCPeer(peerId);
+    const rtcPeer = getOrCreateRTCPeer(peerId);
     let useRelay = false;
 
-    // Try to establish WebRTC connection if not already open
     if (!rtcPeer.dc || rtcPeer.dc.readyState !== 'open') {
         try {
             await rtcPeer.createOffer();
-
-            // Wait for data channel to open with timeout
             await new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => reject(new Error('WebRTC timeout')), WEBRTC_CONNECT_TIMEOUT);
                 const origOpen = rtcPeer.handlers.onDataChannelOpen;
@@ -264,48 +267,54 @@ async function initiateTransfer(peerId) {
                 };
             });
         } catch (err) {
-            console.warn('WebRTC connection failed, falling back to relay:', err.message);
-            showToast('WebRTC failed, using relay...', 'info');
+            console.warn('WebRTC failed, falling back to relay:', err.message);
+            showToast('WebRTC failed, using relay…', 'info');
             useRelay = true;
         }
     }
 
-    // Perform E2E key exchange before transfer
+    // Perform E2E key exchange before transfer.
     try {
-        if (!rtcPeer.encryptionReady) {
-            await rtcPeer.initiateKeyExchange();
-        }
-        // Set shared key on receiver for decryption
-        fileReceiver.setSharedKey(rtcPeer.sharedKey);
+        if (!rtcPeer.encryptionReady) await rtcPeer.initiateKeyExchange();
+        fileReceiver.setPeerKey(peerId, rtcPeer.sharedKey);
     } catch (err) {
         console.warn('Key exchange failed, transferring without encryption:', err.message);
     }
 
-    // Send files sequentially
-    for (const file of state.selectedFiles) {
-        const transferId = `send-${file.name}`;
-        try {
-            const progressCb = (progress) => {
-                renderTransfer({ id: transferId, ...progress });
-                updatePeerProgress(peerId, progress.progress);
-            };
-
-            if (useRelay) {
-                await rtcPeer.sendFileViaRelay(file, progressCb);
-            } else {
-                await rtcPeer.sendFile(file, progressCb);
+    wakeAcquire();
+    try {
+        for (const file of state.selectedFiles) {
+            const transferId = `send-${file.name}`;
+            try {
+                const progressCb = (progress) => {
+                    renderTransfer({ id: transferId, peerId, ...progress });
+                    updatePeerProgress(peerId, progress.progress);
+                };
+                if (useRelay) await rtcPeer.sendFileViaRelay(file, progressCb);
+                else await rtcPeer.sendFile(file, progressCb);
+                showToast(`Sent: ${file.name}`, 'success');
+            } catch (err) {
+                if (err.message === 'cancelled') {
+                    renderTransfer({ id: transferId, peerId, name: file.name, progress: 0, sent: 0, total: file.size, speed: 0, direction: 'send', cancelled: true });
+                    showToast(`Cancelled: ${file.name}`, 'info');
+                } else {
+                    console.error('Transfer failed:', err);
+                    showToast(`Failed to send ${file.name}`, 'error');
+                }
             }
-            showToast(`Sent: ${file.name}`, 'success');
-        } catch (err) {
-            console.error('Transfer failed:', err);
-            showToast(`Failed to send ${file.name}`, 'error');
         }
+    } finally {
+        wakeRelease();
     }
 
-    // Clear files after transfer
     state.selectedFiles = [];
     renderFiles([], removeFile);
     updatePeerProgress(peerId, 1);
+}
+
+function cancelTransfer(peerId) {
+    const rtcPeer = state.rtcPeers.get(peerId);
+    if (rtcPeer) rtcPeer.cancelSend();
 }
 
 function sendTransferRequest(peerId) {
@@ -314,23 +323,42 @@ function sendTransferRequest(peerId) {
         return;
     }
 
-    const files = state.selectedFiles.map(f => ({
-        name: f.name,
-        size: f.size,
-        type: f.type,
-    }));
-
+    const files = state.selectedFiles.map(f => ({ name: f.name, size: f.size, type: f.type }));
     signaling.send('transfer_request', { target: peerId, files });
     state.selectedPeerId = peerId;
-    showToast('Transfer request sent...', 'info');
+    showToast('Transfer request sent…', 'info');
 }
+
+// ── Screen Wake Lock ───────────────────────────────────
+async function wakeAcquire() {
+    state.wakeRefs++;
+    if (state.wakeLock || !('wakeLock' in navigator)) return;
+    try {
+        state.wakeLock = await navigator.wakeLock.request('screen');
+        state.wakeLock.addEventListener('release', () => { state.wakeLock = null; });
+    } catch { /* not permitted / unsupported — non-fatal */ }
+}
+
+function wakeRelease() {
+    state.wakeRefs = Math.max(0, state.wakeRefs - 1);
+    if (state.wakeRefs === 0 && state.wakeLock) {
+        state.wakeLock.release().catch(() => {});
+        state.wakeLock = null;
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.wakeRefs > 0 && !state.wakeLock) {
+        wakeAcquire();
+        state.wakeRefs--; // wakeAcquire incremented; keep the count balanced
+    }
+});
 
 // ── UI Rendering ───────────────────────────────────────
 function renderPeers() {
     const grid = $('#peers-grid');
     const noPeers = $('#no-peers');
 
-    // Remove existing peer cards (keep empty state)
     grid.querySelectorAll('.peer-card').forEach(el => el.remove());
 
     if (state.peers.size === 0) {
@@ -345,42 +373,29 @@ function renderPeers() {
         return;
     }
 
-    // Remove empty state
     const empty = grid.querySelector('.empty-state');
     if (empty) empty.remove();
 
     for (const [id, peer] of state.peers) {
         const card = createPeerCard(peer);
-
-        card.addEventListener('click', () => {
-            selectPeer(id);
-        });
-
+        card.addEventListener('click', () => selectPeer(id));
         card.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 selectPeer(id);
             }
         });
-
         grid.appendChild(card);
     }
 }
 
 function selectPeer(peerId) {
-    // Toggle selection
-    if (state.selectedPeerId === peerId) {
-        state.selectedPeerId = null;
-    } else {
-        state.selectedPeerId = peerId;
-    }
+    state.selectedPeerId = state.selectedPeerId === peerId ? null : peerId;
 
-    // Update UI
     document.querySelectorAll('.peer-card').forEach(card => {
         card.classList.toggle('selected', card.dataset.peerId === state.selectedPeerId);
     });
 
-    // If files are selected and peer is selected, send transfer request
     if (state.selectedPeerId && state.selectedFiles.length > 0) {
         sendTransferRequest(state.selectedPeerId);
     }
@@ -392,9 +407,12 @@ function updateTextSection() {
     const hasTarget = state.selectedPeerId || state.peers.size > 0;
     const textSection = $('#text-section');
     textSection.hidden = !hasTarget;
+    $('#send-text-btn').disabled = !state.selectedPeerId;
+}
 
-    const sendBtn = $('#send-text-btn');
-    sendBtn.disabled = !state.selectedPeerId;
+// ── Room codes, QR & share links ───────────────────────
+function buildShareUrl(code) {
+    return `${location.origin}${location.pathname}#${code}`;
 }
 
 function showRoomCode(code, expiresIn) {
@@ -407,11 +425,26 @@ function showRoomCode(code, expiresIn) {
     codeDiv.hidden = false;
     codeEl.textContent = code;
 
-    // Start countdown timer
+    // Render the scannable share link as a QR code.
+    const shareUrl = buildShareUrl(code);
+    const linkEl = $('#share-link');
+    if (linkEl) {
+        linkEl.textContent = shareUrl;
+        linkEl.dataset.url = shareUrl;
+    }
+    const canvas = $('#room-qr');
+    if (canvas) {
+        try {
+            renderQR(canvas, shareUrl);
+            canvas.hidden = false;
+        } catch (err) {
+            console.warn('QR render failed:', err);
+            canvas.hidden = true;
+        }
+    }
+
     let remaining = expiresIn;
-    clearInterval(state.roomTimer);
-    state.roomTimer = setInterval(() => {
-        remaining--;
+    const tick = () => {
         if (remaining <= 0) {
             clearInterval(state.roomTimer);
             timerEl.textContent = 'Code expired';
@@ -421,18 +454,15 @@ function showRoomCode(code, expiresIn) {
         const min = Math.floor(remaining / 60);
         const sec = remaining % 60;
         timerEl.textContent = `Expires in ${min}:${sec.toString().padStart(2, '0')}`;
-    }, 1000);
-
-    const min = Math.floor(remaining / 60);
-    const sec = remaining % 60;
-    timerEl.textContent = `Expires in ${min}:${sec.toString().padStart(2, '0')}`;
+    };
+    clearInterval(state.roomTimer);
+    tick();
+    state.roomTimer = setInterval(() => { remaining--; tick(); }, 1000);
 }
 
 function resetRoomUI() {
-    const createDiv = $('#room-create');
-    const codeDiv = $('#room-code-display');
-    createDiv.hidden = false;
-    codeDiv.hidden = true;
+    $('#room-create').hidden = false;
+    $('#room-code-display').hidden = true;
     clearInterval(state.roomTimer);
     state.roomCode = null;
 }
@@ -460,7 +490,6 @@ function escapeHtml(str) {
 // ── File Handling ──────────────────────────────────────
 function addFiles(fileList) {
     for (const file of fileList) {
-        // Prevent duplicates
         if (!state.selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
             state.selectedFiles.push(file);
         }
@@ -473,12 +502,59 @@ function removeFile(index) {
     renderFiles(state.selectedFiles, removeFile);
 }
 
+// ── Deep links ─────────────────────────────────────────
+const CODE_RE = /^(BEAM-)?[0-9A-Z]{4,8}$/i;
+
+function parseDeepLink() {
+    const hash = decodeURIComponent(location.hash.replace(/^#/, '')).trim();
+    if (hash && CODE_RE.test(hash)) {
+        state.pendingJoinCode = hash.toUpperCase().startsWith('BEAM-') ? hash.toUpperCase() : `BEAM-${hash.toUpperCase()}`;
+        history.replaceState(null, '', location.pathname + location.search);
+        return;
+    }
+    const params = new URLSearchParams(location.search);
+    const code = params.get('code');
+    if (code && CODE_RE.test(code.trim())) {
+        const c = code.trim().toUpperCase();
+        state.pendingJoinCode = c.startsWith('BEAM-') ? c : `BEAM-${c}`;
+    }
+    if (params.get('action') === 'create-room') state.pendingAction = 'create-room';
+}
+
+// ── PWA ────────────────────────────────────────────────
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .catch((err) => console.warn('SW registration failed:', err));
+    });
+}
+
+function initInstallPrompt() {
+    const btn = $('#install-btn');
+    if (!btn) return;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        state.installPrompt = e;
+        btn.hidden = false;
+    });
+    btn.addEventListener('click', async () => {
+        if (!state.installPrompt) return;
+        state.installPrompt.prompt();
+        await state.installPrompt.userChoice;
+        state.installPrompt = null;
+        btn.hidden = true;
+    });
+    window.addEventListener('appinstalled', () => {
+        btn.hidden = true;
+        showToast('BeamIt installed', 'success');
+    });
+}
+
 // ── Event Bindings ─────────────────────────────────────
 function initEvents() {
-    // Theme toggle
     $('#theme-toggle').addEventListener('click', toggleTheme);
 
-    // Drop zone
     const dropZone = $('#drop-zone');
     const fileInput = $('#file-input');
 
@@ -493,39 +569,29 @@ function initEvents() {
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
             addFiles(e.target.files);
-            fileInput.value = ''; // Reset for re-selection
+            fileInput.value = '';
         }
     });
 
-    // Drag and drop
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.classList.add('dragover');
     });
-
     dropZone.addEventListener('dragleave', (e) => {
         e.preventDefault();
         dropZone.classList.remove('dragover');
     });
-
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.classList.remove('dragover');
-        if (e.dataTransfer.files.length > 0) {
-            addFiles(e.dataTransfer.files);
-        }
+        if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
     });
 
-    // Prevent default drag behavior on body
     document.body.addEventListener('dragover', (e) => e.preventDefault());
     document.body.addEventListener('drop', (e) => e.preventDefault());
 
-    // Room creation
-    $('#create-room-btn').addEventListener('click', () => {
-        signaling.send('create_room', {});
-    });
+    $('#create-room-btn').addEventListener('click', () => signaling.send('create_room', {}));
 
-    // Room joining
     const joinInput = $('#join-code-input');
     const joinBtn = $('#join-room-btn');
 
@@ -536,79 +602,73 @@ function initEvents() {
             joinInput.value = '';
         }
     });
-
-    joinInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            joinBtn.click();
-        }
-    });
-
-    // Auto-format room code input
+    joinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') joinBtn.click(); });
     joinInput.addEventListener('input', (e) => {
-        let val = e.target.value.toUpperCase().replace(/[^A-Z0-9\-]/g, '');
-        e.target.value = val;
+        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9\-]/g, '');
     });
 
-    // Copy room code
-    $('#copy-code-btn').addEventListener('click', async () => {
-        const code = $('#room-code').textContent;
-        try {
-            await navigator.clipboard.writeText(code);
-            showToast('Code copied!', 'success');
-        } catch {
-            // Fallback for older browsers
-            const input = document.createElement('input');
-            input.value = code;
-            document.body.appendChild(input);
-            input.select();
-            document.execCommand('copy');
-            input.remove();
-            showToast('Code copied!', 'success');
-        }
-    });
+    $('#copy-code-btn').addEventListener('click', () => copyText($('#room-code').textContent, 'Code copied!'));
 
-    // Text sharing
+    const copyLinkBtn = $('#copy-link-btn');
+    if (copyLinkBtn) {
+        copyLinkBtn.addEventListener('click', () => {
+            const url = $('#share-link')?.dataset.url || buildShareUrl(state.roomCode || '');
+            copyText(url, 'Link copied!');
+        });
+    }
+
+    const clearBtn = $('#clear-transfers-btn');
+    if (clearBtn) clearBtn.addEventListener('click', clearFinishedTransfers);
+
     const textInput = $('#text-input');
     const sendTextBtn = $('#send-text-btn');
 
     textInput.addEventListener('input', () => {
         sendTextBtn.disabled = !textInput.value.trim() || !state.selectedPeerId;
     });
-
     sendTextBtn.addEventListener('click', () => {
         if (!state.selectedPeerId || !textInput.value.trim()) return;
-
-        signaling.send('text', {
-            target: state.selectedPeerId,
-            text: textInput.value.trim(),
-        });
-
+        signaling.send('text', { target: state.selectedPeerId, text: textInput.value.trim() });
         showToast('Text sent', 'success');
         textInput.value = '';
         sendTextBtn.disabled = true;
     });
+
+    setTransferCancelHandler(cancelTransfer);
+}
+
+async function copyText(text, okMsg) {
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast(okMsg, 'success');
+    } catch {
+        const input = document.createElement('input');
+        input.value = text;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+        showToast(okMsg, 'success');
+    }
 }
 
 // ── Initialization ─────────────────────────────────────
 async function init() {
     initTheme();
     initEvents();
+    parseDeepLink();
+    registerServiceWorker();
+    initInstallPrompt();
     setConnectionStatus('', 'Connecting...');
 
-    // Fetch TURN credentials before connecting (non-blocking on failure).
     await fetchTURNCredentials();
-
     signaling.connect();
 
-    // Periodic ping to keep connection alive
     setInterval(() => {
-        if (signaling.connected) {
-            signaling.send('ping', {});
-        }
+        if (signaling.connected) signaling.send('ping', {});
     }, 30000);
 }
 
-// Start when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
