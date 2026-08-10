@@ -19,11 +19,9 @@
 
 **BeamIt** is an open-source, instant file sharing tool that lets anyone share files between ANY devices, ANYWHERE — same room or different countries — using only a web browser. One 6.9MB Go binary. Zero configuration. Just run it. Same-network devices auto-discover; cross-network pairs use a short shareable code, a link, or a QR code. Transfers prefer WebRTC P2P, fall back through a built-in TURN relay, then a WebSocket relay — every path stays end-to-end encrypted and is verified with a streaming SHA-256.
 
-<div align="center">
-<img alt="BeamIt Screenshot" src="https://github.com/user-attachments/assets/859da738-20f8-4d21-b3f0-8e6a312c42dd" width="100%">
+https://github.com/user-attachments/assets/62d3caf3-6246-4820-b918-856df41e4eb7
 
-*BeamIt — drag a file, drop on a device, instant encrypted P2P transfer.*
-</div>
+*A real capture of the BeamIt CLI — start the server, hit its HTTP surface, watch two devices pair over the LAN, enable the built-in TURN relay, and shut down cleanly.*
 
 ---
 
